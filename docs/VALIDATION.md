@@ -2,6 +2,8 @@
 
 ## Numbered preview iteration 1: Android SVG rendering
 
+- Published Android iteration **1** to `preview`: [update group 14bdb698](https://expo.dev/accounts/raysayantan07s-team/projects/the-journey/updates/14bdb698-5320-4e23-accd-250425c62e83), Android update ID `01a1abfe-f4b6-7a0b-b623-07dd215f74c9`. Publication confirmed the matching runtime. No new APK was built.
+
 - Device feedback on the first OTA release reported worse map dragging and pinching. Inspection of the installed `react-native-svg` Android implementation confirmed that every animated SVG descendant invalidates and recycles its root's bitmap. A route-window-sized SVG made even character breathing expensive.
 - Android now uses small independent terrain SVGs (340 × 180 world units), isolated mist/sparkle surfaces, and a separate 220 × 220 character surface. Pan/zoom transforms native views on the UI thread. Retained tile roots survive window shifts. A layout container covers the current route window, but it is not rasterized into one giant SVG bitmap. Camera origin and container layout change together; character placement uses the same global camera coordinates.
 - The heading displays the bundled iteration. `scripts/update-preview.cjs` validates EAS configuration and increments `src/iteration.json` before publishing; failed publications restore the previous number. Release regression tests exercise success, failure, and retry without making network calls. Use this release command for subsequent numbered updates.
