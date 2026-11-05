@@ -1,0 +1,30 @@
+{
+  "expo": {
+    "name": "The Journey",
+    "slug": "the-journey",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "backgroundColor": "#F6F3EB",
+    "icon": "./assets/icon.png",
+    "android": {
+      "package": "com.thejourney.personal",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#E8F0DF"
+      }
+    },
+    "plugins": ["expo-sqlite", "expo-status-bar"],
+    "web": {
+      "bundler": "metro",
+      "favicon": "./assets/icon.png"
+    },
+    "runtimeVersion": {
+      "policy": "fingerprint"
+    },
+    "updates": {
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 0
+    }
+  }
+}
