@@ -1,6 +1,6 @@
 {
   "cli": {
-    "version": ">= 18.0.0",
+    "version": ">= 27.4.1",
     "appVersionSource": "local"
   },
   "build": {
@@ -15,7 +15,9 @@
       "distribution": "internal",
       "android": {
         "buildType": "apk"
-      }
+      },
+      "channel": "preview",
+      "environment": "preview"
     },
     "production": {
       "android": {

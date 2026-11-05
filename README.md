@@ -64,40 +64,21 @@ npx expo export --platform android --output-dir dist/android
 
 If Expo's compatibility endpoint is blocked, `EXPO_OFFLINE=1 npx expo install --check` checks against the SDK's locally installed version metadata. This does not prove that Expo cloud services are reachable.
 
-## Android APK without a desktop development machine
+## Android APK and compatible over-the-air updates
 
-No Android SDK, Windows or Mac is needed for EAS cloud builds. An Expo account, authenticated EAS CLI and network access to Expo services are required. No APK has been generated as part of this implementation.
+See [the Android preview and EAS Update runbook](docs/ANDROID_PREVIEW.md) for the exact remaining setup, authentication, APK build, installation and Fold cover-screen checks.
 
-1. In a terminal with secure interactive input, authenticate and link the existing project:
+The `preview` profile produces an internal APK on the `preview` channel using the `preview` EAS environment. Expo Updates is installed, with fingerprint-based runtime compatibility. A real Expo project must first be linked and its update URL configured; `npm run eas:ready` reports these missing prerequisites rather than accepting placeholders.
 
-   ```sh
-   npx eas-cli@latest login
-   npx eas-cli@latest whoami
-   npx eas-cli@latest init
-   ```
+After that one-time setup:
 
-   This may add the real account owner/project ID to `app.json`. Do not invent IDs or paste credentials into source or chat. In restricted cloud environments, Expo API access (including `api.expo.dev`) must be allowed in environment settings. If CLI login is unavailable, configure an Expo access token securely as `EXPO_TOKEN` in an execution environment that supports EAS CLI authentication.
+```sh
+npm run android:preview
+# Later, for compatible UI/animation changes:
+npm run update:preview -- --message "Describe the UI change"
+```
 
-2. Build a self-contained installable APK:
-
-   ```sh
-   npx eas-cli@latest build --platform android --profile preview
-   ```
-
-   Allow EAS to generate/manage the Android keystore when prompted. Preserve the signing credentials for future updates. The `preview` profile produces an **APK**, not an AAB. Its developer sandbox is absent.
-
-3. Open the resulting EAS build page, wait for the actual build to finish, and download the APK on your phone. Alternatively use `npx eas-cli@latest build:list --platform android` to locate it. Install from Downloads; Android may ask to allow that browser/file manager to install unknown apps.
-
-4. For progress/animation previews, build the development client:
-
-   ```sh
-   npx eas-cli@latest build --platform android --profile development
-   npx expo start --dev-client --tunnel
-   ```
-
-   Install the development APK from the EAS build page and connect it to Metro. Tunneling requires additional network support and may prompt to install Expo's tunnel package. If unavailable, use a reachable Metro host. A release APK does not need a development server.
-
-5. Test on the **outer display**, portrait, with the phone folded. Check status/camera cutout and gesture-navigation clearance, three buttons, map focal zoom, repeated gesture transitions and recentering. Repeat with Samsung display scaling and Android font sizes changed; record the runtime **dp** dimensions/density in the Settings placeholder. Do not treat 1080 × 2520 physical pixels as dp. Check background/resume and Android Back dismissal of sheets. Test a long session and observe frame timing on the actual device; 120 Hz performance is not claimed from a browser test.
+No APK has been generated: the attempted build stopped at missing Expo authentication, and the cloud proxy currently denies the Expo API. Required network access and an optional personal `EXPO_TOKEN` requirement were saved to the environment draft; they have not been applied or published.
 
 ## Scope and next pass
 

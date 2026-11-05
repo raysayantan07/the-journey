@@ -18,6 +18,13 @@
     "web": {
       "bundler": "metro",
       "favicon": "./assets/icon.png"
+    },
+    "runtimeVersion": {
+      "policy": "fingerprint"
+    },
+    "updates": {
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 0
     }
   }
 }
