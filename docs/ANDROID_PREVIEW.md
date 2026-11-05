@@ -11,7 +11,7 @@ The React Native application is implemented in this repository. `App.tsx` opens 
 - Authentication succeeds through the environment's `EXPO_TOKEN`; never print or commit its value.
 - Android preview build succeeded using the existing remote keystore: [build dc97c00b](https://expo.dev/accounts/raysayantan07s-team/projects/the-journey/builds/dc97c00b-092a-4de5-8f53-4c1e0f21cbee).
 - Installed preview native runtime: `58c8ef5b9e8676eec1ab0efa5f28ec870ebfec3e`. The camera/windowing changes have the same fingerprint and are eligible for an Android-only update to `preview`.
-- `api.expo.dev`, `expo.dev`, and `storage.googleapis.com` are allowed in the republished environment. Google Storage upload succeeded. Report any newly blocked hostname before retrying.
+- `api.expo.dev`, `expo.dev`, and `storage.googleapis.com` are allowed. The APK build upload succeeded, but EAS Update uses **`update-assets-upload-production.storage.googleapis.com`**, which is currently denied by the proxy (CONNECT 403). Add that exact hostname and republish the environment before retrying the update. No camera/windowing update has been published yet.
 
 ## 1. Unblock cloud access and authenticate
 

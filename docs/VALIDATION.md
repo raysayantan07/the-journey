@@ -46,3 +46,13 @@ The initial composition spread too far across the narrow viewport. The refined r
 - EAS Android fingerprint generated using the `preview` build profile matches the installed preview build `dc97c00b-092a-4de5-8f53-4c1e0f21cbee`: `58c8ef5b9e8676eec1ab0efa5f28ec870ebfec3e`.
 - These changes use existing native modules and can be delivered as JavaScript through the `preview` EAS Update channel. Project `8356cd34-3b01-4c62-b64a-d1e879ed94a2` and Android package `com.thejourney.personal` are unchanged. No signing credentials are generated.
 - Keep this work on `feat/fluid-camera-windowing` until device testing and user approval; do not merge into `main` yet.
+
+### Preview update upload blocker
+
+- Full browser smoke test passed: tier previews, nine animation states, repeated touch pan/pinch, recenter, reward taps, panel camera preservation, 320/360/412dp layouts, and persistence. The smoke test waits for the actual recenter result rather than a fixed animation delay.
+- Latest Android Hermes export succeeded; TypeScript, lint, and all 10 tests passed.
+- Source implementation was pushed as commit `39842dca23865e63754797cb62bee3afb6c524ce` on `feat/fluid-camera-windowing`.
+- Android-only EAS Update publication to channel `preview` was attempted after validation, but asset upload failed with HTTP 403 before an update group was published.
+- The signing API returns upload hostname `update-assets-upload-production.storage.googleapis.com`. A direct HTTPS check confirmed proxy `CONNECT tunnel failed, response 403`. Allowing `storage.googleapis.com` alone does not allow this subdomain.
+- Add that exact hostname to the environment allowlist and republish the environment before retrying. The hostname was reported to the user; no upload retry was made after the denial. A new APK is not required because the installed native runtime fingerprint matches.
+- On resume, check out this feature branch, verify the fingerprint and channel, run `npm run check`, then use the normal `eas update --channel preview --platform android --environment preview --non-interactive` workflow. Prior `/tmp` bundle artifacts may no longer exist. Do not merge into `main` until the user tests and approves.
