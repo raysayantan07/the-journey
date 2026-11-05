@@ -20,7 +20,6 @@ import Animated, {
   runOnJS,
   useAnimatedProps,
   useAnimatedReaction,
-  useAnimatedStyle,
   useDerivedValue,
   useReducedMotion,
   useSharedValue,
@@ -36,6 +35,7 @@ import {
   type Milestone,
 } from "./model";
 import { Character } from "./Character";
+import { NativeWorld } from "./NativeWorld";
 import { Garden, Stone, WorldDefs } from "./WorldArt";
 import {
   CameraInteractionContext,
@@ -115,12 +115,6 @@ export const JourneyWorld = forwardRef<WorldHandle, Props>(
       updateWindow(centerStep, band);
     }, [updateWindow, centerStep, band]);
     // The native SVG stays still between window changes; only its host moves.
-    const {
-      x: canvasX,
-      y: canvasY,
-      width: canvasWidth,
-      height: canvasHeight,
-    } = cameraCanvas(centerStep, height, band);
     const recenter = useCallback(() => {
       const p = positionForStep(step);
       const target = cameraAt(p, width, height, initialZoom);
@@ -185,17 +179,6 @@ export const JourneyWorld = forwardRef<WorldHandle, Props>(
       // Mirror the figurine at each switchback, including reverse travel.
       facing.value = (s % 2 === 0 ? 1 : -1) * (step >= travel.value ? 1 : -1);
     }, [step]);
-    const cameraStyle = useAnimatedStyle(() =>
-      isWeb
-        ? {}
-        : {
-            transform: [
-              { translateX: tx.value + canvasX * zoom.value },
-              { translateY: ty.value + canvasY * zoom.value },
-              { scale: zoom.value },
-            ],
-          },
-    );
     const cameraProps = useAnimatedProps(() => ({
       opacity: 1,
       ...(isWeb
@@ -293,128 +276,130 @@ export const JourneyWorld = forwardRef<WorldHandle, Props>(
       >
         <CameraInteractionContext.Provider value={interacting}>
           <GestureDetector gesture={gesture}>
-            <View style={StyleSheet.absoluteFill} collapsable={false}>
-              <Animated.View
-                pointerEvents="none"
-                style={[
-                  isWeb
-                    ? StyleSheet.absoluteFill
-                    : {
-                        position: "absolute",
-                        width: canvasWidth,
-                        height: canvasHeight,
-                        transformOrigin: [0, 0, 0],
-                      },
-                  cameraStyle,
-                ]}
-              >
-                <Svg
-                  testID="journey-scene"
-                  width={isWeb ? width : canvasWidth}
-                  height={isWeb ? height : canvasHeight}
-                  viewBox={
-                    isWeb
-                      ? undefined
-                      : `${canvasX} ${canvasY} ${canvasWidth} ${canvasHeight}`
-                  }
+            <View
+              style={[StyleSheet.absoluteFill, { overflow: "hidden" }]}
+              collapsable={false}
+            >
+              {!isWeb ? (
+                <NativeWorld
+                  tiles={visible}
+                  step={step}
+                  selected={selected}
+                  tx={tx}
+                  ty={ty}
+                  zoom={zoom}
+                  travel={travel}
+                  facing={facing}
+                  characterState={characterState}
+                  canvas={cameraCanvas(centerStep, height, band)}
+                />
+              ) : (
+                <Animated.View
+                  pointerEvents="none"
+                  style={StyleSheet.absoluteFill}
                 >
-                  <WorldDefs />
-                  <AnimatedGroup id="world-camera" animatedProps={cameraProps}>
-                    {visible
-                      .filter((t) => t.id % 12 === 0)
-                      .map((t) => (
-                        <G key={`mist${t.id}`}>
-                          <Ellipse
-                            cx={t.x + 80}
-                            cy={t.y - 100}
-                            rx="310"
-                            ry="170"
-                            fill={`url(#mist-${t.tier})`}
-                          />
-                        </G>
-                      ))}
-                    {visible.map((t) => (
-                      <G key={`trail${t.id}`}>
-                        <Circle
-                          cx={t.x + 60}
-                          cy={t.y + 35}
-                          r="2"
-                          fill="#BBC6AC"
-                          opacity=".5"
-                        />
-                        <Circle
-                          cx={t.x - 70}
-                          cy={t.y - 22}
-                          r="1.5"
-                          fill="#BBC6AC"
-                          opacity=".6"
-                        />
-                      </G>
-                    ))}
-                    {visible
-                      .slice()
-                      .reverse()
-                      .map((t) => (
-                        <G key={t.id}>
-                          <Garden tile={t} />
-                          <Stone
-                            tile={t}
-                            completed={t.id <= step}
-                            selected={selected === t.id}
-                          />
-                        </G>
-                      ))}
-                    {centerStep < 30 && (
-                      <G x="110" y="254">
-                        <Path
-                          d="M-30-8 Q0 4 30-8"
-                          fill="none"
-                          stroke="#CBD7BB"
-                          strokeWidth="1"
-                        />
-                        <SvgText
-                          textAnchor="middle"
-                          y="22"
-                          fontFamily="sans-serif"
-                          fontSize="12"
-                          letterSpacing="3"
-                          fill="#8C9D81"
-                        >
-                          THE FIRST CHAPTER
-                        </SvgText>
-                        <SvgText
-                          textAnchor="middle"
-                          y="44"
-                          fontFamily="sans-serif"
-                          fontSize="11"
-                          fill="#A1AD94"
-                        >
-                          Every adventure starts somewhere.
-                        </SvgText>
-                      </G>
-                    )}
-                    <AnimatedGroup animatedProps={ambientProps}>
+                  <Svg testID="journey-scene" width={width} height={height}>
+                    <WorldDefs />
+                    <AnimatedGroup
+                      id="world-camera"
+                      animatedProps={cameraProps}
+                    >
                       {visible
-                        .filter((t) => t.id % 8 === 0)
+                        .filter((t) => t.id % 12 === 0)
                         .map((t) => (
-                          <G key={t.id} x={t.x - 95} y={t.y - 55}>
-                            <Path
-                              d="M0-5 V5 M-5 0 H5"
-                              stroke="#D4BA7D"
-                              strokeWidth="1.5"
+                          <G key={`mist${t.id}`}>
+                            <Ellipse
+                              cx={t.x + 80}
+                              cy={t.y - 100}
+                              rx="310"
+                              ry="170"
+                              fill={`url(#mist-${t.tier})`}
                             />
-                            <Circle cx="20" cy="-16" r="1.5" fill="#D4BA7D" />
                           </G>
                         ))}
+                      {visible.map((t) => (
+                        <G key={`trail${t.id}`}>
+                          <Circle
+                            cx={t.x + 60}
+                            cy={t.y + 35}
+                            r="2"
+                            fill="#BBC6AC"
+                            opacity=".5"
+                          />
+                          <Circle
+                            cx={t.x - 70}
+                            cy={t.y - 22}
+                            r="1.5"
+                            fill="#BBC6AC"
+                            opacity=".6"
+                          />
+                        </G>
+                      ))}
+                      {visible
+                        .slice()
+                        .reverse()
+                        .map((t) => (
+                          <G key={t.id}>
+                            <Garden tile={t} />
+                            <Stone
+                              tile={t}
+                              completed={t.id <= step}
+                              selected={selected === t.id}
+                            />
+                          </G>
+                        ))}
+                      {centerStep < 30 && (
+                        <G x="110" y="254">
+                          <Path
+                            d="M-30-8 Q0 4 30-8"
+                            fill="none"
+                            stroke="#CBD7BB"
+                            strokeWidth="1"
+                          />
+                          <SvgText
+                            textAnchor="middle"
+                            y="22"
+                            fontFamily="sans-serif"
+                            fontSize="12"
+                            letterSpacing="3"
+                            fill="#8C9D81"
+                          >
+                            THE FIRST CHAPTER
+                          </SvgText>
+                          <SvgText
+                            textAnchor="middle"
+                            y="44"
+                            fontFamily="sans-serif"
+                            fontSize="11"
+                            fill="#A1AD94"
+                          >
+                            Every adventure starts somewhere.
+                          </SvgText>
+                        </G>
+                      )}
+                      <AnimatedGroup animatedProps={ambientProps}>
+                        {visible
+                          .filter((t) => t.id % 8 === 0)
+                          .map((t) => (
+                            <G key={t.id} x={t.x - 95} y={t.y - 55}>
+                              <Path
+                                d="M0-5 V5 M-5 0 H5"
+                                stroke="#D4BA7D"
+                                strokeWidth="1.5"
+                              />
+                              <Circle cx="20" cy="-16" r="1.5" fill="#D4BA7D" />
+                            </G>
+                          ))}
+                      </AnimatedGroup>
+                      <Character
+                        travel={travel}
+                        state={characterState}
+                        facing={facing}
+                      />
                     </AnimatedGroup>
-                    <Character
-                      travel={travel}
-                      state={characterState}
-                      facing={facing}
-                    />
-                  </AnimatedGroup>
-                </Svg>
-              </Animated.View>
+                  </Svg>
+                </Animated.View>
+              )}
             </View>
           </GestureDetector>
         </CameraInteractionContext.Provider>

@@ -10,8 +10,9 @@ The React Native application is implemented in this repository. `App.tsx` opens 
 - Existing Expo project: `@raysayantan07s-team/the-journey`, ID `8356cd34-3b01-4c62-b64a-d1e879ed94a2`. Android package remains `com.thejourney.personal`.
 - Authentication succeeds through the environment's `EXPO_TOKEN`; never print or commit its value.
 - Android preview build succeeded using the existing remote keystore: [build dc97c00b](https://expo.dev/accounts/raysayantan07s-team/projects/the-journey/builds/dc97c00b-092a-4de5-8f53-4c1e0f21cbee).
-- Installed preview native runtime: `58c8ef5b9e8676eec1ab0efa5f28ec870ebfec3e`. The camera/windowing changes have the same fingerprint and are eligible for an Android-only update to `preview`.
-- `api.expo.dev`, `expo.dev`, and `storage.googleapis.com` are allowed. The APK build upload succeeded, but EAS Update uses **`update-assets-upload-production.storage.googleapis.com`**, which is currently denied by the proxy (CONNECT 403). Add that exact hostname and republish the environment before retrying the update. No camera/windowing update has been published yet.
+- Installed preview native runtime: `58c8ef5b9e8676eec1ab0efa5f28ec870ebfec3e`. Verify it again before each Android-only update to `preview`.
+- The exact upload hostname `update-assets-upload-production.storage.googleapis.com` is now allowed. The initial camera/windowing update was published as group `889fa37d-815d-4e25-9a8b-3e0fbe2eb071`. Device feedback reported worse dragging/pinching, so the next iteration isolates Android SVG bitmap redraws into small surfaces.
+- The number beside **The Journey** identifies the running bundle. Numbered releases begin at **1**. Always publish through `node scripts/update-preview.cjs`; it increments the bundled number and restores it if publishing fails. Commit `src/iteration.json` after successful publishing. The older npm publishing script bypasses this counter; its text remains intact because changing npm scripts changes the installed fingerprint.
 
 ## 1. Unblock cloud access and authenticate
 
@@ -115,10 +116,10 @@ npm ci
 npm run check
 npm run eas:ready
 npx eas fingerprint:compare --build-id REAL_INSTALLED_BUILD_ID --environment preview
-npm run update:preview -- --message "Refine Journey tile lighting"
+EXPO_NO_TELEMETRY=1 node scripts/update-preview.cjs --message "Refine Journey tile lighting" --non-interactive
 ```
 
-The last command expands to:
+The last command validates configuration, increments the bundled iteration, and invokes:
 
 ```sh
 npx eas update --channel preview --platform android --environment preview --message "Refine Journey tile lighting"

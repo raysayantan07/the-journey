@@ -75,10 +75,10 @@ After that one-time setup:
 ```sh
 npm run android:preview
 # Later, for compatible UI/animation changes:
-npm run update:preview -- --message "Describe the UI change"
+EXPO_NO_TELEMETRY=1 node scripts/update-preview.cjs --message "Describe the UI change" --non-interactive
 ```
 
-No APK has been generated: the attempted build stopped at missing Expo authentication, and the cloud proxy currently denies the Expo API. Required network access and an optional personal `EXPO_TOKEN` requirement were saved to the environment draft; they have not been applied or published.
+The preview APK and EAS Update are configured. The release command increments the number beside **The Journey** so the installed app identifies its running iteration; numbered releases start at 1. Commit `src/iteration.json` after each successful publication. Keep package scripts unchanged to preserve compatibility with the installed APK, and use the dedicated release command above instead of the older npm publishing script.
 
 ## Scope and next pass
 

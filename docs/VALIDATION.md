@@ -1,5 +1,13 @@
 # Milestone 1 validation
 
+## Numbered preview iteration 1: Android SVG rendering
+
+- Device feedback on the first OTA release reported worse map dragging and pinching. Inspection of the installed `react-native-svg` Android implementation confirmed that every animated SVG descendant invalidates and recycles its root's bitmap. A route-window-sized SVG made even character breathing expensive.
+- Android now uses small independent terrain SVGs (340 × 180 world units), isolated mist/sparkle surfaces, and a separate 220 × 220 character surface. Pan/zoom transforms native views on the UI thread. Retained tile roots survive window shifts. A layout container covers the current route window, but it is not rasterized into one giant SVG bitmap. Camera origin and container layout change together; character placement uses the same global camera coordinates.
+- The heading displays the bundled iteration. `scripts/update-preview.cjs` validates EAS configuration and increments `src/iteration.json` before publishing; failed publications restore the previous number. Release regression tests exercise success, failure, and retry without making network calls. Use this release command for subsequent numbered updates.
+- Android preview fingerprint remains `58c8ef5b9e8676eec1ab0efa5f28ec870ebfec3e`. Native dependencies and installed APK are unchanged. Package scripts remain intact because their text is included in this SDK's fingerprint.
+- Browser smoke checks can inspect either the standard web SVG or the layered scene. The layered scene was temporarily selected in the browser for verification, then restored to Android-only selection before publication. Checks cover character/terrain alignment, bounded SVG dimensions, retained tile roots across window boundaries, touch pan/pinch, recentering, milestone hit testing, panels, narrow layouts, and persistence. Browser correctness is not an Android frame-time measurement; actual Fold responsiveness still requires phone testing.
+
 Validated in Codex Cloud using Node 24.22.1, npm 11.9.0 and system Chromium. Captures use a **360 × 840 logical-pixel** browser viewport. They are browser renders of actual SVG scene elements, not Android screenshots or assets used as map backgrounds.
 
 ## Passed
