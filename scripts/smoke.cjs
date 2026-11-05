@@ -124,7 +124,23 @@ async function main() {
     await page
       .getByRole("button", { name: "Recenter on explorer", exact: true })
       .click();
-    await page.waitForTimeout(900);
+    // Wait for the actual camera result; a fixed delay can expire while the
+    // browser is busy after rendering all character/tier previews.
+    await page.waitForFunction(
+      (expected) => {
+        const values = document
+          .querySelector("#world-camera")
+          ?.getAttribute("transform")
+          ?.match(/-?\d+(?:\.\d+)?(?:e[+-]?\d+)?/g)
+          ?.map(Number);
+        return (
+          values?.length === 6 &&
+          values.every((value, i) => Math.abs(value - expected[i]) < 0.1)
+        );
+      },
+      original,
+      { timeout: 5000 },
+    );
     const restored = await matrix();
     for (let i = 0; i < 6; i++)
       assert.ok(

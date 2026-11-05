@@ -380,7 +380,7 @@ export function Tree({
     </G>
   );
 }
-export function Garden({ tile }: { tile: Tile }) {
+export const Garden = React.memo(function Garden({ tile }: { tile: Tile }) {
   const side = Math.floor(tile.id / 6) % 2 === 0 ? -1 : 1;
   const theme = themes[tile.tier]!;
   const x = tile.x + side * 115;
@@ -418,4 +418,4 @@ export function Garden({ tile }: { tile: Tile }) {
       </G>
     );
   return null;
-}
+});

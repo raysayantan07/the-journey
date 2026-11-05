@@ -3,7 +3,6 @@ import {
   useCallback,
   useEffect,
   useImperativeHandle,
-  useMemo,
   useState,
 } from "react";
 import { AppState, Platform, StyleSheet, View } from "react-native";
@@ -21,6 +20,7 @@ import Animated, {
   runOnJS,
   useAnimatedProps,
   useAnimatedReaction,
+  useAnimatedStyle,
   useDerivedValue,
   useReducedMotion,
   useSharedValue,
@@ -28,6 +28,8 @@ import Animated, {
 } from "react-native-reanimated";
 import {
   cameraAt,
+  cameraCanvas,
+  cameraZoomBand,
   positionForStep,
   routeWindow,
   type CharacterState,
@@ -35,7 +37,10 @@ import {
 } from "./model";
 import { Character } from "./Character";
 import { Garden, Stone, WorldDefs } from "./WorldArt";
-import { useAmbientPhase } from "../components/useAmbientPhase";
+import {
+  CameraInteractionContext,
+  useAmbientPhase,
+} from "../components/useAmbientPhase";
 import { motion } from "../design/tokens";
 
 const AnimatedGroup = Animated.createAnimatedComponent(G);
@@ -65,19 +70,57 @@ export const JourneyWorld = forwardRef<WorldHandle, Props>(
     const worldFocalY = useSharedValue(0);
     const travel = useSharedValue(step);
     const facing = useSharedValue(1);
-    const pulse = useAmbientPhase(7000);
+    const interacting = useSharedValue(false);
+    const panning = useSharedValue(false);
+    const pulse = useAmbientPhase(7000, interacting);
     const reduced = useReducedMotion();
     const pinching = useSharedValue(false);
-    const [centerStep, setCenterStep] = useState(step);
     const maxStep = Math.max(320, step + 80);
-    const visible = useMemo(
-      () =>
-        routeWindow(
-          Math.max(0, centerStep - 35),
-          Math.min(maxStep, centerStep + 35),
+    const [renderWindow, setRenderWindow] = useState(() => {
+      const band = cameraZoomBand(initialZoom);
+      const { halfWindow } = cameraCanvas(step, height, band);
+      return {
+        centerStep: step,
+        band,
+        tiles: routeWindow(
+          Math.max(0, step - halfWindow),
+          Math.min(maxStep, step + halfWindow),
         ),
-      [centerStep, maxStep],
+      };
+    });
+    const updateWindow = useCallback(
+      (center: number, band: number) => {
+        setRenderWindow((previous) => {
+          const { halfWindow } = cameraCanvas(center, height, band);
+          const first = Math.max(0, center - halfWindow);
+          const last = Math.min(maxStep, center + halfWindow);
+          if (
+            previous.centerStep === center &&
+            previous.band === band &&
+            previous.tiles[0]?.id === first &&
+            previous.tiles.at(-1)?.id === last
+          )
+            return previous;
+          return {
+            centerStep: center,
+            band,
+            tiles: routeWindow(first, last, previous.tiles),
+          };
+        });
+      },
+      [height, maxStep],
     );
+    const { centerStep, band, tiles: visible } = renderWindow;
+    useEffect(() => {
+      updateWindow(centerStep, band);
+    }, [updateWindow, centerStep, band]);
+    // The native SVG stays still between window changes; only its host moves.
+    const {
+      x: canvasX,
+      y: canvasY,
+      width: canvasWidth,
+      height: canvasHeight,
+    } = cameraCanvas(centerStep, height, band);
     const recenter = useCallback(() => {
       const p = positionForStep(step);
       const target = cameraAt(p, width, height, initialZoom);
@@ -120,12 +163,21 @@ export const JourneyWorld = forwardRef<WorldHandle, Props>(
       return () => subscription.remove();
     }, [tx, ty, zoom, travel, step]);
     useAnimatedReaction(
-      () => Math.round((140 - (height / 2 - ty.value) / zoom.value) / 540) * 10,
-      (bucket, previous) => {
-        if (bucket !== previous)
-          runOnJS(setCenterStep)(Math.max(0, Math.min(maxStep, bucket)));
+      () => ({
+        center: Math.max(
+          0,
+          Math.min(
+            maxStep,
+            Math.round((140 - (height / 2 - ty.value) / zoom.value) / 540) * 10,
+          ),
+        ),
+        band: cameraZoomBand(zoom.value),
+      }),
+      (next, previous) => {
+        if (next.center !== previous?.center || next.band !== previous?.band)
+          runOnJS(updateWindow)(next.center, next.band);
       },
-      [height, maxStep],
+      [height, maxStep, updateWindow],
     );
     useDerivedValue(() => {
       const id = Math.floor(travel.value);
@@ -133,13 +185,24 @@ export const JourneyWorld = forwardRef<WorldHandle, Props>(
       // Mirror the figurine at each switchback, including reverse travel.
       facing.value = (s % 2 === 0 ? 1 : -1) * (step >= travel.value ? 1 : -1);
     }, [step]);
+    const cameraStyle = useAnimatedStyle(() =>
+      isWeb
+        ? {}
+        : {
+            transform: [
+              { translateX: tx.value + canvasX * zoom.value },
+              { translateY: ty.value + canvasY * zoom.value },
+              { scale: zoom.value },
+            ],
+          },
+    );
     const cameraProps = useAnimatedProps(() => ({
       opacity: 1,
       ...(isWeb
         ? {
             transform: `matrix(${zoom.value} 0 0 ${zoom.value} ${tx.value} ${ty.value})`,
           }
-        : { matrix: [zoom.value, 0, 0, zoom.value, tx.value, ty.value] }),
+        : {}),
     }));
     const ambientProps = useAnimatedProps(() => ({
       opacity: 0.4 + Math.sin(pulse.value) * 0.2,
@@ -159,6 +222,9 @@ export const JourneyWorld = forwardRef<WorldHandle, Props>(
       .maxPointers(1)
       .minDistance(7)
       .onStart(() => {
+        panning.value = true;
+        interacting.value = true;
+        cancelAnimation(zoom);
         cancelAnimation(tx);
         cancelAnimation(ty);
       })
@@ -167,6 +233,10 @@ export const JourneyWorld = forwardRef<WorldHandle, Props>(
           tx.value = boundX(tx.value + e.changeX, zoom.value);
           ty.value = boundY(ty.value + e.changeY, zoom.value);
         }
+      })
+      .onFinalize(() => {
+        panning.value = false;
+        interacting.value = pinching.value;
       });
     const pinch = Gesture.Pinch()
       .onStart((e) => {
@@ -174,6 +244,7 @@ export const JourneyWorld = forwardRef<WorldHandle, Props>(
         cancelAnimation(ty);
         cancelAnimation(zoom);
         pinching.value = true;
+        interacting.value = true;
         startZoom.value = zoom.value;
         worldFocalX.value = (e.focalX - tx.value) / zoom.value;
         worldFocalY.value = (e.focalY - ty.value) / zoom.value;
@@ -185,7 +256,11 @@ export const JourneyWorld = forwardRef<WorldHandle, Props>(
         ty.value = e.focalY - worldFocalY.value * s;
       })
       .onFinalize(() => {
+        // A one-finger pan also fails the simultaneous pinch recognizer.
+        // Do not start a settling animation unless a pinch actually began.
+        if (!pinching.value) return;
         pinching.value = false;
+        interacting.value = panning.value;
         tx.value = withTiming(boundX(tx.value, zoom.value), { duration: 250 });
         ty.value = withTiming(boundY(ty.value, zoom.value), { duration: 250 });
       });
@@ -216,107 +291,133 @@ export const JourneyWorld = forwardRef<WorldHandle, Props>(
         style={StyleSheet.absoluteFill}
         accessibilityLabel="Journey adventure map. Drag to explore, pinch to zoom. Use the next reward button to inspect a milestone."
       >
-        <GestureDetector gesture={gesture}>
-          <View style={StyleSheet.absoluteFill} collapsable={false}>
-            <Svg testID="journey-scene" width={width} height={height}>
-              <WorldDefs />
-              <AnimatedGroup id="world-camera" animatedProps={cameraProps}>
-                {visible
-                  .filter((t) => t.id % 12 === 0)
-                  .map((t) => (
-                    <G key={`mist${t.id}`}>
-                      <Ellipse
-                        cx={t.x + 80}
-                        cy={t.y - 100}
-                        rx="310"
-                        ry="170"
-                        fill={`url(#mist-${t.tier})`}
-                      />
-                    </G>
-                  ))}
-                {visible.map((t) => (
-                  <G key={`trail${t.id}`}>
-                    <Circle
-                      cx={t.x + 60}
-                      cy={t.y + 35}
-                      r="2"
-                      fill="#BBC6AC"
-                      opacity=".5"
-                    />
-                    <Circle
-                      cx={t.x - 70}
-                      cy={t.y - 22}
-                      r="1.5"
-                      fill="#BBC6AC"
-                      opacity=".6"
-                    />
-                  </G>
-                ))}
-                {visible
-                  .slice()
-                  .reverse()
-                  .map((t) => (
-                    <G key={t.id}>
-                      <Garden tile={t} />
-                      <Stone
-                        tile={t}
-                        completed={t.id <= step}
-                        selected={selected === t.id}
-                      />
-                    </G>
-                  ))}
-                {centerStep < 30 && (
-                  <G x="110" y="254">
-                    <Path
-                      d="M-30-8 Q0 4 30-8"
-                      fill="none"
-                      stroke="#CBD7BB"
-                      strokeWidth="1"
-                    />
-                    <SvgText
-                      textAnchor="middle"
-                      y="22"
-                      fontFamily="sans-serif"
-                      fontSize="12"
-                      letterSpacing="3"
-                      fill="#8C9D81"
-                    >
-                      THE FIRST CHAPTER
-                    </SvgText>
-                    <SvgText
-                      textAnchor="middle"
-                      y="44"
-                      fontFamily="sans-serif"
-                      fontSize="11"
-                      fill="#A1AD94"
-                    >
-                      Every adventure starts somewhere.
-                    </SvgText>
-                  </G>
-                )}
-                <AnimatedGroup animatedProps={ambientProps}>
-                  {visible
-                    .filter((t) => t.id % 8 === 0)
-                    .map((t) => (
-                      <G key={t.id} x={t.x - 95} y={t.y - 55}>
-                        <Path
-                          d="M0-5 V5 M-5 0 H5"
-                          stroke="#D4BA7D"
-                          strokeWidth="1.5"
+        <CameraInteractionContext.Provider value={interacting}>
+          <GestureDetector gesture={gesture}>
+            <View style={StyleSheet.absoluteFill} collapsable={false}>
+              <Animated.View
+                pointerEvents="none"
+                style={[
+                  isWeb
+                    ? StyleSheet.absoluteFill
+                    : {
+                        position: "absolute",
+                        width: canvasWidth,
+                        height: canvasHeight,
+                        transformOrigin: [0, 0, 0],
+                      },
+                  cameraStyle,
+                ]}
+              >
+                <Svg
+                  testID="journey-scene"
+                  width={isWeb ? width : canvasWidth}
+                  height={isWeb ? height : canvasHeight}
+                  viewBox={
+                    isWeb
+                      ? undefined
+                      : `${canvasX} ${canvasY} ${canvasWidth} ${canvasHeight}`
+                  }
+                >
+                  <WorldDefs />
+                  <AnimatedGroup id="world-camera" animatedProps={cameraProps}>
+                    {visible
+                      .filter((t) => t.id % 12 === 0)
+                      .map((t) => (
+                        <G key={`mist${t.id}`}>
+                          <Ellipse
+                            cx={t.x + 80}
+                            cy={t.y - 100}
+                            rx="310"
+                            ry="170"
+                            fill={`url(#mist-${t.tier})`}
+                          />
+                        </G>
+                      ))}
+                    {visible.map((t) => (
+                      <G key={`trail${t.id}`}>
+                        <Circle
+                          cx={t.x + 60}
+                          cy={t.y + 35}
+                          r="2"
+                          fill="#BBC6AC"
+                          opacity=".5"
                         />
-                        <Circle cx="20" cy="-16" r="1.5" fill="#D4BA7D" />
+                        <Circle
+                          cx={t.x - 70}
+                          cy={t.y - 22}
+                          r="1.5"
+                          fill="#BBC6AC"
+                          opacity=".6"
+                        />
                       </G>
                     ))}
-                </AnimatedGroup>
-                <Character
-                  travel={travel}
-                  state={characterState}
-                  facing={facing}
-                />
-              </AnimatedGroup>
-            </Svg>
-          </View>
-        </GestureDetector>
+                    {visible
+                      .slice()
+                      .reverse()
+                      .map((t) => (
+                        <G key={t.id}>
+                          <Garden tile={t} />
+                          <Stone
+                            tile={t}
+                            completed={t.id <= step}
+                            selected={selected === t.id}
+                          />
+                        </G>
+                      ))}
+                    {centerStep < 30 && (
+                      <G x="110" y="254">
+                        <Path
+                          d="M-30-8 Q0 4 30-8"
+                          fill="none"
+                          stroke="#CBD7BB"
+                          strokeWidth="1"
+                        />
+                        <SvgText
+                          textAnchor="middle"
+                          y="22"
+                          fontFamily="sans-serif"
+                          fontSize="12"
+                          letterSpacing="3"
+                          fill="#8C9D81"
+                        >
+                          THE FIRST CHAPTER
+                        </SvgText>
+                        <SvgText
+                          textAnchor="middle"
+                          y="44"
+                          fontFamily="sans-serif"
+                          fontSize="11"
+                          fill="#A1AD94"
+                        >
+                          Every adventure starts somewhere.
+                        </SvgText>
+                      </G>
+                    )}
+                    <AnimatedGroup animatedProps={ambientProps}>
+                      {visible
+                        .filter((t) => t.id % 8 === 0)
+                        .map((t) => (
+                          <G key={t.id} x={t.x - 95} y={t.y - 55}>
+                            <Path
+                              d="M0-5 V5 M-5 0 H5"
+                              stroke="#D4BA7D"
+                              strokeWidth="1.5"
+                            />
+                            <Circle cx="20" cy="-16" r="1.5" fill="#D4BA7D" />
+                          </G>
+                        ))}
+                    </AnimatedGroup>
+                    <Character
+                      travel={travel}
+                      state={characterState}
+                      facing={facing}
+                    />
+                  </AnimatedGroup>
+                </Svg>
+              </Animated.View>
+            </View>
+          </GestureDetector>
+        </CameraInteractionContext.Provider>
       </View>
     );
   },
