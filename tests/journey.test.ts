@@ -4,6 +4,8 @@ import {
   cameraAt,
   cameraCanvas,
   cameraZoomBand,
+  cameraBounds,
+  flickVelocity,
   characterPosition,
   milestoneForStep,
   nextMilestoneAfter,
@@ -13,6 +15,26 @@ import {
   tierForStep,
   zoomAtFocal,
 } from "../src/journey/model";
+test("flick velocity scales with release speed, limits extremes, and respects reduced motion", () => {
+  for (const v of [-89, 0, 89, NaN, Infinity])
+    assert.equal(flickVelocity(v), 0);
+  for (const v of [-1200, -200, 200, 1200]) assert.equal(flickVelocity(v), v);
+  assert.equal(flickVelocity(9000), 4500);
+  assert.equal(flickVelocity(-9000), -4500);
+  assert.equal(flickVelocity(1200, true), 0);
+  assert.equal(flickVelocity(1200, false, 121), 0);
+  assert.equal(flickVelocity(1200, false, 50), 1200);
+});
+test("coasting uses the same finite pan limits at every zoom and route extent", () => {
+  for (const zoom of [0.48, 0.8, 1.65])
+    for (const maxStep of [320, 1000080]) {
+      const b = cameraBounds(360, 840, maxStep, zoom);
+      assert.ok(b.minX < b.maxX && b.minY < b.maxY);
+      assert.equal(b.minX, 180 - 500 * zoom);
+      assert.equal(b.maxY, maxStep * 54 * zoom + 630);
+      assert.ok(Object.values(b).every(Number.isFinite));
+    }
+});
 test("achievement ranges include every boundary exactly once", () => {
   const cases = [
     [0, "base"],

@@ -1,5 +1,12 @@
 # Milestone 1 validation
 
+## Numbered preview iteration 2: tree cache and momentum
+
+- The rounded tree alternates with a flat-path pointed tree and contains layered ellipses and gradients. Android now reuses twelve image assets (six tiers × two shapes) rendered from the existing `Tree` SVG, rather than rasterizing the rounded tree separately for every route tile. Assets include 1×/2×/3× resolutions, preserve transparent shadows, and load in the existing overscan window. Native image fading is disabled. The character, stones, rewards, and bounded scene surfaces remain independent.
+- `scripts/generate-tree-assets.cjs` regenerates the committed tree images from `WorldArt.tsx` and theme tokens. It is a development-only tool requiring TypeScript, React DOM, and sharp in the generation environment; no package or native dependency was added.
+- A successful one-finger pan release starts UI-thread velocity decay. Release speed controls distance; small velocities are ignored and extreme velocities are capped. Both axes use the same bounds as dragging. Touch-down stops coasting immediately, pinch/recenter interrupt it, and a tap used to stop momentum cannot accidentally select a milestone. Cancelled gestures and pinch handoffs do not launch a fling. Reduced motion disables release momentum; backgrounding cancels it. Decorative SVG motion stays paused while coasting.
+- Browser gesture tests cover post-release travel, faster versus slower flicks, touch-down cancellation, normal drag/pinch/recenter behavior, retained tile roots, camera alignment, milestone taps, narrow layouts, and persistence. Unit tests cover velocity thresholds/caps, reduced motion, and finite camera bounds. Android frame times and tree entry still need phone confirmation.
+
 ## Numbered preview iteration 1: Android SVG rendering
 
 - Published Android iteration **1** to `preview`: [update group 14bdb698](https://expo.dev/accounts/raysayantan07s-team/projects/the-journey/updates/14bdb698-5320-4e23-accd-250425c62e83), Android update ID `01a1abfe-f4b6-7a0b-b623-07dd215f74c9`. Publication confirmed the matching runtime. No new APK was built.

@@ -1,5 +1,5 @@
 import { memo } from "react";
-import { StyleSheet } from "react-native";
+import { Image, StyleSheet, View } from "react-native";
 import Svg, {
   Circle,
   Ellipse,
@@ -16,6 +16,7 @@ import { Character } from "./Character";
 import { Garden, Stone, WorldDefs } from "./WorldArt";
 import { positionForProgress, type CharacterState, type Tile } from "./model";
 import { useAmbientPhase } from "../components/useAmbientPhase";
+import { treeAssets } from "./treeAssets";
 
 const AnimatedGroup = Animated.createAnimatedComponent(G);
 
@@ -35,35 +36,61 @@ const TileSurface = memo(function TileSurface({
   canvasY: number;
 }) {
   return (
-    <Svg
-      testID={`journey-tile-${tile.id}`}
-      width={340}
-      height={180}
-      viewBox={`${tile.x - 170} ${tile.y - 110} 340 180`}
+    <View
       style={{
         position: "absolute",
         left: tile.x - canvasX - 170,
         top: tile.y - canvasY - 110,
+        width: 340,
+        height: 180,
       }}
     >
-      <WorldDefs />
-      <Circle
-        cx={tile.x + 60}
-        cy={tile.y + 35}
-        r="2"
-        fill="#BBC6AC"
-        opacity=".5"
-      />
-      <Circle
-        cx={tile.x - 70}
-        cy={tile.y - 22}
-        r="1.5"
-        fill="#BBC6AC"
-        opacity=".6"
-      />
-      <Garden tile={tile} />
-      <Stone tile={tile} completed={completed} selected={selected} />
-    </Svg>
+      {tile.id % 6 === 2 && (
+        <Image
+          testID={`journey-tree-${tile.id}`}
+          source={treeAssets[tile.tier][Math.floor(tile.id / 6) % 2]!}
+          fadeDuration={0}
+          resizeMode="contain"
+          resizeMethod="scale"
+          style={{
+            position: "absolute",
+            width: 128,
+            height: 128,
+            left: 170 + (Math.floor(tile.id / 6) % 2 === 0 ? -115 : 115) - 64,
+            top: 26,
+          }}
+        />
+      )}
+      <Svg
+        testID={`journey-tile-${tile.id}`}
+        width={340}
+        height={180}
+        viewBox={`${tile.x - 170} ${tile.y - 110} 340 180`}
+        style={{
+          position: "absolute",
+          left: 0,
+          top: 0,
+        }}
+      >
+        <WorldDefs />
+        <Circle
+          cx={tile.x + 60}
+          cy={tile.y + 35}
+          r="2"
+          fill="#BBC6AC"
+          opacity=".5"
+        />
+        <Circle
+          cx={tile.x - 70}
+          cy={tile.y - 22}
+          r="1.5"
+          fill="#BBC6AC"
+          opacity=".6"
+        />
+        <Garden tile={tile} rasterTree />
+        <Stone tile={tile} completed={completed} selected={selected} />
+      </Svg>
+    </View>
   );
 });
 

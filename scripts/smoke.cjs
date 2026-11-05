@@ -55,31 +55,34 @@ async function main() {
       );
       await close();
     }
-    for (const [step, tier] of [
-      [180, "Solid Year"],
-      [205, "Excellent Year"],
-      [230, "Extraordinary Year"],
-      [250, "Champion Year"],
-      [260, "Champion Year"],
-      [261, "Legendary Year"],
-      [280, "Legendary Year"],
-    ]) {
-      await choose(step);
-      assert.ok(await page.getByText(tier, { exact: true }).count());
-      await page.screenshot({ path: `${output}/journey-${step}.png` });
+    if (!process.env.JOURNEY_GESTURES_ONLY) {
+      for (const [step, tier] of [
+        [180, "Solid Year"],
+        [205, "Excellent Year"],
+        [230, "Extraordinary Year"],
+        [250, "Champion Year"],
+        [260, "Champion Year"],
+        [261, "Legendary Year"],
+        [280, "Legendary Year"],
+      ]) {
+        await choose(step);
+        assert.ok(await page.getByText(tier, { exact: true }).count());
+        await page.screenshot({ path: `${output}/journey-${step}.png` });
+      }
+      for (const state of [
+        "sleeping",
+        "standing",
+        "jogging",
+        "running",
+        "flying",
+        "broken streak",
+        "vacation",
+        "sick",
+        "injury",
+      ])
+        await choose(280, state);
     }
-    for (const state of [
-      "sleeping",
-      "standing",
-      "jogging",
-      "running",
-      "flying",
-      "broken streak",
-      "vacation",
-      "sick",
-      "injury",
-    ])
-      await choose(280, state);
+    if (process.env.JOURNEY_GESTURES_ONLY) await choose(280, "flying");
     await choose(205, "jogging");
     const nativeLayers = await page
       .getByTestId("journey-native-camera")
@@ -98,20 +101,79 @@ async function main() {
             .map(Number);
     const original = await matrix();
     const cdp = await context.newCDPSession(page);
-    async function touch(type, points) {
+    let lastPoints = [];
+    let touchTimestamp = 0;
+    async function touch(type, points, flick = false) {
+      // Ordinary test drags stop before lifting. Dedicated flick cases release immediately.
+      if (type === "touchEnd" && lastPoints.length === 1 && !flick) {
+        for (let i = 0; i < 4; i++) {
+          await cdp.send("Input.dispatchTouchEvent", {
+            type: "touchMove",
+            touchPoints: lastPoints.map((p, id) => ({ x: p[0], y: p[1], id })),
+          });
+          await page.waitForTimeout(50);
+        }
+      }
+      // Explicit sample times keep velocity tests independent of headless-renderer load.
+      touchTimestamp =
+        !flick || type === "touchStart"
+          ? Date.now() / 1000
+          : touchTimestamp + 1 / 60;
       await cdp.send("Input.dispatchTouchEvent", {
         type,
+        timestamp: touchTimestamp,
         touchPoints: points.map((p, i) => ({ x: p[0], y: p[1], id: i })),
         modifiers: 0,
       });
-      await page.waitForTimeout(35);
+      await page.waitForTimeout(flick ? 8 : 35);
+      lastPoints = points;
     }
+    const coastDistances = [];
+    for (const speed of [12, 32]) {
+      await page
+        .getByRole("button", { name: "Recenter on explorer", exact: true })
+        .click();
+      await page.waitForTimeout(750);
+      await touch("touchStart", [[180, 460]]);
+      for (let i = 1; i <= 6; i++)
+        await touch("touchMove", [[180, 460 - i * speed]], true);
+      await touch("touchEnd", [], true);
+      const released = await matrix();
+      await page.waitForTimeout(250);
+      const coasting = await matrix();
+      coastDistances.push(released[5] - coasting[5]);
+      assert.ok(
+        released[5] - coasting[5] > 5,
+        `map continues moving after a flick (speed ${speed}, release ${released[5]}, coast ${coasting[5]})`,
+      );
+      await touch("touchStart", [[180, 400]]);
+      const stopped = await matrix();
+      await page.waitForTimeout(200);
+      assert.ok(
+        Math.abs((await matrix())[5] - stopped[5]) < 0.2,
+        "touch-down immediately stops momentum",
+      );
+      await touch("touchCancel", []);
+    }
+    assert.ok(
+      coastDistances[1] > coastDistances[0] * 1.3,
+      "harder flick travels farther",
+    );
+    await page
+      .getByRole("button", { name: "Recenter on explorer", exact: true })
+      .click();
+    await page.waitForTimeout(750);
     for (let loop = 0; loop < 3; loop++) {
       await touch("touchStart", [[140, 360]]);
       for (let i = 1; i <= 5; i++)
         await touch("touchMove", [[140 + i * 8, 360 + i * 10]]);
       await touch("touchEnd", []);
       const before = await matrix();
+      await page.waitForTimeout(150);
+      assert.ok(
+        Math.abs((await matrix())[5] - before[5]) < 0.2,
+        "drag held still before release does not coast",
+      );
       await touch("touchStart", [
         [130, 420],
         [230, 420],
@@ -241,7 +303,7 @@ async function main() {
         "recenter restores camera",
       );
     await page.getByRole("button", { name: /Next reward/ }).click();
-    assert.ok(await page.getByText("COLLECTED · STEP 220").count());
+    await page.getByText("COLLECTED · STEP 220", { exact: true }).waitFor();
     const atPanel = await matrix();
     await page.getByRole("button", { name: "Dismiss milestone" }).click();
     assert.deepEqual(await matrix(), atPanel);
@@ -287,7 +349,7 @@ async function main() {
     );
     assert.deepEqual(errors, [], "no runtime errors");
     console.log(
-      "PASS: tier previews; nine animation states; four navigation actions; repeated touch pan/pinch; recenter; map milestone tap; panel camera preservation; 320/360/412dp controls; persistence.",
+      `${process.env.JOURNEY_GESTURES_ONLY ? "PASS: gesture subset" : "PASS: tier previews; nine animation states"}; four navigation actions; release momentum; stronger flick travels farther; touch-to-stop; repeated touch pan/pinch; recenter; map milestone tap; panel camera preservation; 320/360/412dp controls; persistence.`,
     );
   } finally {
     await browser.close();

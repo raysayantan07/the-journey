@@ -173,6 +173,39 @@ export function cameraZoomBand(zoom: number) {
   return Math.max(0.48, Math.floor((zoom + 1e-6) / 0.12) * 0.12);
 }
 
+/** Gesture velocity is in screen dp/s, so flick feel stays consistent at every zoom. */
+export function flickVelocity(
+  velocity: number,
+  reducedMotion = false,
+  idleMilliseconds = 0,
+) {
+  "worklet";
+  if (
+    reducedMotion ||
+    idleMilliseconds > 120 ||
+    !Number.isFinite(idleMilliseconds) ||
+    !Number.isFinite(velocity) ||
+    Math.abs(velocity) < 90
+  )
+    return 0;
+  return Math.max(-4500, Math.min(4500, velocity));
+}
+
+export function cameraBounds(
+  width: number,
+  height: number,
+  maxStep: number,
+  zoom: number,
+) {
+  "worklet";
+  return {
+    minX: width / 2 - 500 * zoom,
+    maxX: width / 2 + 300 * zoom,
+    minY: height * 0.25 - 240 * zoom,
+    maxY: maxStep * 54 * zoom + height * 0.75,
+  };
+}
+
 /** Viewport plus overscan for a 10-step camera bucket and artwork extents. */
 export function cameraCanvas(centerStep: number, height: number, zoom = 0.48) {
   const halfWindow = Math.ceil(height / (cameraZoomBand(zoom) * 108)) + 8;

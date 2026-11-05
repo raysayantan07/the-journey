@@ -380,13 +380,21 @@ export function Tree({
     </G>
   );
 }
-export const Garden = React.memo(function Garden({ tile }: { tile: Tile }) {
+export const Garden = React.memo(function Garden({
+  tile,
+  rasterTree = false,
+}: {
+  tile: Tile;
+  rasterTree?: boolean;
+}) {
   const side = Math.floor(tile.id / 6) % 2 === 0 ? -1 : 1;
   const theme = themes[tile.tier]!;
   const x = tile.x + side * 115;
   const y = tile.y + 12;
   if (tile.id % 6 === 2)
-    return <Tree x={x} y={y} variant={Math.floor(tile.id / 6)} theme={theme} />;
+    return rasterTree ? null : (
+      <Tree x={x} y={y} variant={Math.floor(tile.id / 6)} theme={theme} />
+    );
   if (tile.id % 6 === 4)
     return (
       <G x={x} y={y}>

@@ -23,12 +23,15 @@ import Animated, {
   useDerivedValue,
   useReducedMotion,
   useSharedValue,
+  withDecay,
   withTiming,
 } from "react-native-reanimated";
 import {
   cameraAt,
   cameraCanvas,
   cameraZoomBand,
+  cameraBounds,
+  flickVelocity,
   positionForStep,
   routeWindow,
   type CharacterState,
@@ -72,10 +75,19 @@ export const JourneyWorld = forwardRef<WorldHandle, Props>(
     const facing = useSharedValue(1);
     const interacting = useSharedValue(false);
     const panning = useSharedValue(false);
+    const coastingX = useSharedValue(false);
+    const coastingY = useSharedValue(false);
+    const panWasPinch = useSharedValue(false);
+    const stoppedCoastOnTouch = useSharedValue(false);
+    const lastPanMoveAt = useSharedValue(0);
     const pulse = useAmbientPhase(7000, interacting);
     const reduced = useReducedMotion();
     const pinching = useSharedValue(false);
     const maxStep = Math.max(320, step + 80);
+    useDerivedValue(() => {
+      interacting.value =
+        panning.value || pinching.value || coastingX.value || coastingY.value;
+    });
     const [renderWindow, setRenderWindow] = useState(() => {
       const band = cameraZoomBand(initialZoom);
       const { halfWindow } = cameraCanvas(step, height, band);
@@ -116,6 +128,8 @@ export const JourneyWorld = forwardRef<WorldHandle, Props>(
     }, [updateWindow, centerStep, band]);
     // The native SVG stays still between window changes; only its host moves.
     const recenter = useCallback(() => {
+      coastingX.value = false;
+      coastingY.value = false;
       const p = positionForStep(step);
       const target = cameraAt(p, width, height, initialZoom);
       zoom.value = withTiming(initialZoom, {
@@ -127,7 +141,18 @@ export const JourneyWorld = forwardRef<WorldHandle, Props>(
       ty.value = withTiming(target.y, {
         duration: reduced ? 0 : motion.camera,
       });
-    }, [step, width, height, initialZoom, zoom, tx, ty, reduced]);
+    }, [
+      step,
+      width,
+      height,
+      initialZoom,
+      zoom,
+      tx,
+      ty,
+      reduced,
+      coastingX,
+      coastingY,
+    ]);
     useImperativeHandle(ref, () => ({ recenter }), [recenter]);
     useEffect(() => {
       const distance = Math.abs(step - travel.value);
@@ -151,11 +176,15 @@ export const JourneyWorld = forwardRef<WorldHandle, Props>(
           cancelAnimation(tx);
           cancelAnimation(ty);
           cancelAnimation(zoom);
+          coastingX.value = false;
+          coastingY.value = false;
+          panning.value = false;
+          pinching.value = false;
           travel.value = step;
         }
       });
       return () => subscription.remove();
-    }, [tx, ty, zoom, travel, step]);
+    }, [tx, ty, zoom, travel, step, coastingX, coastingY, panning, pinching]);
     useAnimatedReaction(
       () => ({
         center: Math.max(
@@ -192,34 +221,77 @@ export const JourneyWorld = forwardRef<WorldHandle, Props>(
     }));
     const boundX = (x: number, s: number) => {
       "worklet";
-      return Math.max(width / 2 - 500 * s, Math.min(width / 2 + 300 * s, x));
+      const bounds = cameraBounds(width, height, maxStep, s);
+      return Math.max(bounds.minX, Math.min(bounds.maxX, x));
     };
     const boundY = (y: number, s: number) => {
       "worklet";
-      return Math.max(
-        height * 0.25 - 240 * s,
-        Math.min(maxStep * 54 * s + height * 0.75, y),
-      );
+      const bounds = cameraBounds(width, height, maxStep, s);
+      return Math.max(bounds.minY, Math.min(bounds.maxY, y));
     };
     const pan = Gesture.Pan()
       .maxPointers(1)
       .minDistance(7)
+      .onTouchesDown((e) => {
+        if (e.numberOfTouches === 1)
+          stoppedCoastOnTouch.value = coastingX.value || coastingY.value;
+        cancelAnimation(tx);
+        cancelAnimation(ty);
+        coastingX.value = false;
+        coastingY.value = false;
+      })
+      .onBegin(() => {
+        panWasPinch.value = false;
+      })
       .onStart(() => {
         panning.value = true;
-        interacting.value = true;
         cancelAnimation(zoom);
         cancelAnimation(tx);
         cancelAnimation(ty);
       })
       .onChange((e) => {
         if (!pinching.value) {
+          if (e.changeX !== 0 || e.changeY !== 0)
+            lastPanMoveAt.value = Date.now();
           tx.value = boundX(tx.value + e.changeX, zoom.value);
           ty.value = boundY(ty.value + e.changeY, zoom.value);
         }
       })
+      .onEnd((e, success) => {
+        if (!success || pinching.value || panWasPinch.value) return;
+        const bounds = cameraBounds(width, height, maxStep, zoom.value);
+        const idle = Math.max(0, Date.now() - lastPanMoveAt.value);
+        const vx = flickVelocity(e.velocityX, reduced, idle);
+        const vy = flickVelocity(e.velocityY, reduced, idle);
+        if (vx) {
+          coastingX.value = true;
+          tx.value = withDecay(
+            {
+              velocity: vx,
+              deceleration: 0.998,
+              clamp: [bounds.minX, bounds.maxX],
+            },
+            () => {
+              coastingX.value = false;
+            },
+          );
+        }
+        if (vy) {
+          coastingY.value = true;
+          ty.value = withDecay(
+            {
+              velocity: vy,
+              deceleration: 0.998,
+              clamp: [bounds.minY, bounds.maxY],
+            },
+            () => {
+              coastingY.value = false;
+            },
+          );
+        }
+      })
       .onFinalize(() => {
         panning.value = false;
-        interacting.value = pinching.value;
       });
     const pinch = Gesture.Pinch()
       .onStart((e) => {
@@ -227,7 +299,9 @@ export const JourneyWorld = forwardRef<WorldHandle, Props>(
         cancelAnimation(ty);
         cancelAnimation(zoom);
         pinching.value = true;
-        interacting.value = true;
+        panWasPinch.value = true;
+        coastingX.value = false;
+        coastingY.value = false;
         startZoom.value = zoom.value;
         worldFocalX.value = (e.focalX - tx.value) / zoom.value;
         worldFocalY.value = (e.focalY - ty.value) / zoom.value;
@@ -243,7 +317,6 @@ export const JourneyWorld = forwardRef<WorldHandle, Props>(
         // Do not start a settling animation unless a pinch actually began.
         if (!pinching.value) return;
         pinching.value = false;
-        interacting.value = panning.value;
         tx.value = withTiming(boundX(tx.value, zoom.value), { duration: 250 });
         ty.value = withTiming(boundY(ty.value, zoom.value), { duration: 250 });
       });
@@ -262,7 +335,7 @@ export const JourneyWorld = forwardRef<WorldHandle, Props>(
     const tap = Gesture.Tap()
       .maxDistance(7)
       .onEnd((e, success) => {
-        if (success)
+        if (success && !stoppedCoastOnTouch.value)
           runOnJS(hitMilestone)(
             (e.x - tx.value) / zoom.value,
             (e.y - ty.value) / zoom.value,
