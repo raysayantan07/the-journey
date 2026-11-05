@@ -14,7 +14,10 @@
         "backgroundColor": "#E8F0DF"
       }
     },
-    "plugins": ["expo-sqlite", "expo-status-bar"],
+    "plugins": [
+      "expo-sqlite",
+      "expo-status-bar"
+    ],
     "web": {
       "bundler": "metro",
       "favicon": "./assets/icon.png"
@@ -24,7 +27,15 @@
     },
     "updates": {
       "checkAutomatically": "ON_LOAD",
-      "fallbackToCacheTimeout": 0
-    }
+      "fallbackToCacheTimeout": 0,
+      "url": "https://u.expo.dev/8356cd34-3b01-4c62-b64a-d1e879ed94a2"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "8356cd34-3b01-4c62-b64a-d1e879ed94a2"
+      }
+    },
+    "owner": "raysayantan07s-team",
+    "ios": {}
   }
 }

@@ -38,6 +38,7 @@ import {
 } from "./model";
 import { PreviewPanel } from "./PreviewPanel";
 import { loadPreview, savePreview } from "./previewStore";
+import { iteration } from "../iteration.json";
 
 type Panel = "settings" | "back" | "goals" | "workouts" | "preview" | null;
 const copy = {
@@ -185,8 +186,8 @@ export function JourneyScreen() {
           accessibilityRole={__DEV__ ? "button" : undefined}
           accessibilityLabel={
             __DEV__
-              ? "The Journey. Long press for developer preview"
-              : "The Journey"
+              ? `The Journey, iteration ${iteration}. Long press for developer preview`
+              : `The Journey, iteration ${iteration}`
           }
           onLongPress={__DEV__ ? () => setPanel("preview") : undefined}
           delayLongPress={650}
@@ -198,6 +199,7 @@ export function JourneyScreen() {
             maxFontSizeMultiplier={1.4}
           >
             The Journey<Text style={styles.titleDot}>.</Text>
+            <Text style={styles.iteration}> {iteration}</Text>
           </Text>
         </Pressable>
         <RoundButton
@@ -489,6 +491,13 @@ const styles = StyleSheet.create({
     lineHeight: 47,
   },
   titleDot: { color: "#91AB77" },
+  iteration: {
+    fontFamily: "sans-serif",
+    fontSize: 14,
+    fontWeight: "600",
+    letterSpacing: 0,
+    color: palette.muted,
+  },
   stats: { width: "100%", gap: 12, paddingTop: 5, paddingRight: 64 },
   countRow: {
     flexDirection: "row",

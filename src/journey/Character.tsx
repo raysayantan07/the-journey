@@ -19,10 +19,12 @@ export function Character({
   travel,
   state,
   facing,
+  local = false,
 }: {
   travel: SharedValue<number>;
   state: CharacterState;
   facing: SharedValue<number>;
+  local?: boolean;
 }) {
   const phase = useAmbientPhase(
     state === "running" ? 520 : state === "jogging" ? 780 : 2800,
@@ -33,7 +35,7 @@ export function Character({
   const props = useAnimatedProps(() => {
     const step = Math.max(0, travel.value);
     const mix = step - Math.floor(step);
-    const { x, y } = positionForProgress(step);
+    const { x, y } = local ? { x: 0, y: 0 } : positionForProgress(step);
     const moving = mix > 0.01 && mix < 0.99;
     const hop = moving && state !== "flying" ? Math.sin(mix * Math.PI) * 19 : 0;
     const bounce =

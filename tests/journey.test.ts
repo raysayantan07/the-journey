@@ -2,6 +2,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   cameraAt,
+  cameraCanvas,
+  cameraZoomBand,
   characterPosition,
   milestoneForStep,
   nextMilestoneAfter,
@@ -80,4 +82,74 @@ test("upcoming rewards extend without generating an entire route prefix", () => 
   assert.equal(nextMilestoneAfter(260).step, 280);
   assert.equal(nextMilestoneAfter(280).step, 300);
   assert.equal(nextMilestoneAfter(1000000).step, 1000020);
+});
+
+test("native camera canvas covers the viewport at minimum zoom and bucket edges", () => {
+  for (const height of [640, 840, 1200, 1800]) {
+    for (const center of [0, 10, 200, 1000000]) {
+      const canvas = cameraCanvas(center, height);
+      for (const offset of [-5, 5]) {
+        const worldCenter = 140 - (center + offset) * 54;
+        const top = worldCenter - height / (2 * 0.48);
+        const bottom = worldCenter + height / (2 * 0.48);
+        assert.ok(canvas.y < top - 300, "overscan above viewport");
+        assert.ok(
+          canvas.y + canvas.height > bottom + 300,
+          "overscan below viewport",
+        );
+      }
+    }
+  }
+});
+
+test("native host transforms preserve world coordinates when the SVG window changes", () => {
+  const point = positionForStep(205);
+  for (const scale of [0.48, 0.8, 1.65]) {
+    const camera = cameraAt(point, 360, 840, scale);
+    for (const center of [190, 200, 210, 220]) {
+      const canvas = cameraCanvas(center, 840);
+      const screenX =
+        (point.x - canvas.x) * scale + camera.x + canvas.x * scale;
+      const screenY =
+        (point.y - canvas.y) * scale + camera.y + canvas.y * scale;
+      assert.ok(Math.abs(screenX - 180) < 1e-8);
+      assert.ok(Math.abs(screenY - 840 * 0.59) < 1e-8);
+    }
+  }
+});
+
+test("window shifts retain overlapping tile objects and discard outgoing tiles", () => {
+  let window = routeWindow(180, 220);
+  for (const first of [190, 200, 190, 180, 1000000]) {
+    const old = new Map(window.map((tile) => [tile.id, tile]));
+    const next = routeWindow(first, first + 40, window);
+    assert.equal(next.length, 41);
+    for (const tile of next) {
+      assert.deepEqual(tile, routeWindow(tile.id, tile.id)[0]);
+      if (old.has(tile.id)) assert.equal(tile, old.get(tile.id));
+    }
+    window = next;
+  }
+});
+
+test("zoom-aware windows shrink at higher zoom and cover every band boundary", () => {
+  const height = 840;
+  let previousCount = Infinity;
+  for (let zoom = 0.48; zoom <= 1.65; zoom += 0.01) {
+    const band = cameraZoomBand(zoom);
+    assert.ok(band <= zoom + 1e-6);
+    const canvas = cameraCanvas(200, height, zoom);
+    const count = canvas.halfWindow * 2 + 1;
+    assert.ok(count <= previousCount);
+    previousCount = count;
+    for (const bucketOffset of [-5, 5]) {
+      const y = positionForStep(200 + bucketOffset).y;
+      assert.ok(canvas.y < y - height / (2 * zoom) - 300);
+      assert.ok(canvas.y + canvas.height > y + height / (2 * zoom) + 300);
+    }
+  }
+  assert.ok(
+    cameraCanvas(200, height, 1.6).halfWindow <
+      cameraCanvas(200, height, 0.48).halfWindow,
+  );
 });

@@ -24,7 +24,7 @@ async function main() {
     page.on("console", (m) => {
       if (m.type() === "error") errors.push(m.text());
     });
-    await page.goto(url, { waitUntil: "domcontentloaded" });
+    await page.goto(url, { waitUntil: "domcontentloaded", timeout: 90000 });
     const dev = page.getByRole("button", {
       name: "Open developer preview",
       exact: true,
@@ -81,11 +81,21 @@ async function main() {
     ])
       await choose(280, state);
     await choose(205, "jogging");
-    const camera = page.locator("#world-camera");
+    const nativeLayers = await page
+      .getByTestId("journey-native-camera")
+      .count();
+    const camera = nativeLayers
+      ? page.getByTestId("journey-native-camera")
+      : page.locator("#world-camera");
     const matrix = async () =>
-      (await camera.getAttribute("transform"))
-        .match(/-?\d+(?:\.\d+)?(?:e[+-]?\d+)?/g)
-        .map(Number);
+      nativeLayers
+        ? camera.evaluate((element) => {
+            const m = new DOMMatrix(getComputedStyle(element).transform);
+            return [m.a, m.b, m.c, m.d, m.e, m.f];
+          })
+        : (await camera.getAttribute("transform"))
+            .match(/-?\d+(?:\.\d+)?(?:e[+-]?\d+)?/g)
+            .map(Number);
     const original = await matrix();
     const cdp = await context.newCDPSession(page);
     async function touch(type, points) {
@@ -124,8 +134,107 @@ async function main() {
     await page
       .getByRole("button", { name: "Recenter on explorer", exact: true })
       .click();
-    await page.waitForTimeout(900);
+    // Wait for the actual camera result; a fixed delay can expire while the
+    // browser is busy after rendering all character/tier previews.
+    await page.waitForFunction(
+      ({ expected, nativeLayers }) => {
+        const m = nativeLayers
+          ? new DOMMatrix(
+              getComputedStyle(
+                document.querySelector('[data-testid="journey-native-camera"]'),
+              ).transform,
+            )
+          : null;
+        const values = m
+          ? [m.a, m.b, m.c, m.d, m.e, m.f]
+          : document
+              .querySelector("#world-camera")
+              ?.getAttribute("transform")
+              ?.match(/-?\d+(?:\.\d+)?(?:e[+-]?\d+)?/g)
+              ?.map(Number);
+        return (
+          values?.length === 6 &&
+          values.every((value, i) => Math.abs(value - expected[i]) < 0.1)
+        );
+      },
+      { expected: original, nativeLayers },
+      { timeout: 5000 },
+    );
     const restored = await matrix();
+    if (nativeLayers) {
+      const { positionForStep } = await import("../src/journey/model.ts");
+      const p = positionForStep(205);
+      const anchor = await page
+        .getByTestId("journey-native-character")
+        .evaluate((element) => {
+          const m = new DOMMatrix(getComputedStyle(element).transform);
+          return { x: m.e + 110 * m.a, y: m.f + 160 * m.d };
+        });
+      assert.ok(
+        Math.abs(anchor.x - (p.x * restored[0] + restored[4])) < 0.1,
+        "character stays aligned horizontally with terrain",
+      );
+      assert.ok(
+        Math.abs(anchor.y - (p.y * restored[3] + restored[5])) < 0.1,
+        "character stays aligned vertically with terrain",
+      );
+      const tileBounds = await page
+        .getByTestId("journey-tile-205")
+        .boundingBox();
+      assert.ok(
+        Math.abs(tileBounds.x + 170 * restored[0] - anchor.x) < 0.1,
+        "rendered terrain and character share the same camera origin",
+      );
+      assert.ok(
+        Math.abs(tileBounds.y + 110 * restored[3] - anchor.y) < 0.1,
+        "rendered terrain and character share the same vertical origin",
+      );
+      const surfaces = await camera.locator("svg").evaluateAll((elements) =>
+        elements.map((element) => ({
+          width: Number(element.getAttribute("width")),
+          height: Number(element.getAttribute("height")),
+        })),
+      );
+      assert.ok(
+        surfaces.length > 0 && surfaces.length < 75,
+        "bounded native surfaces",
+      );
+      assert.ok(
+        surfaces.every((s) => s.width <= 620 && s.height <= 340),
+        "no route-sized SVG bitmaps",
+      );
+      const retained = await page
+        .getByTestId("journey-tile-205")
+        .elementHandle();
+      const firstTile = await camera
+        .locator('[data-testid^="journey-tile-"]')
+        .first()
+        .getAttribute("data-testid");
+      for (const distance of [600, -600]) {
+        await touch("touchStart", [[180, 400]]);
+        for (let i = 1; i <= 8; i++)
+          await touch("touchMove", [[180, 400 + (distance * i) / 8]]);
+        await touch("touchEnd", []);
+        await page.waitForTimeout(300);
+        assert.ok(
+          await retained.evaluate(
+            (element) =>
+              element ===
+              document.querySelector('[data-testid="journey-tile-205"]'),
+          ),
+          "overlapping SVG surface survives window changes",
+        );
+        if (distance > 0)
+          assert.notEqual(
+            await camera
+              .locator('[data-testid^="journey-tile-"]')
+              .first()
+              .getAttribute("data-testid"),
+            firstTile,
+            "drag crosses a tile window boundary",
+          );
+      }
+    }
     for (let i = 0; i < 6; i++)
       assert.ok(
         Math.abs(original[i] - restored[i]) < 0.1,

@@ -100,11 +100,19 @@ export function tileForStep(id: number): Tile {
     size: milestoneForStep(step) || step === 0 ? 54 : 43,
   };
 }
-export function routeWindow(first: number, last: number): Tile[] {
+export function routeWindow(
+  first: number,
+  last: number,
+  previous: readonly Tile[] = [],
+): Tile[] {
   const start = normalizeStep(first);
   const end = Math.max(start, normalizeStep(last));
-  return Array.from({ length: end - start + 1 }, (_, i) =>
-    tileForStep(start + i),
+  // Retain overlapping tile objects so memoized artwork can skip rendering.
+  // Only the current window is retained; exploring never grows a global cache.
+  const existing = new Map(previous.map((tile) => [tile.id, tile]));
+  return Array.from(
+    { length: end - start + 1 },
+    (_, i) => existing.get(start + i) ?? tileForStep(start + i),
   );
 }
 export function positionForProgress(value: number): Point {
@@ -156,5 +164,23 @@ export function zoomAtFocal(
   return {
     x: focal.x - ((focal.x - camera.x) * newZoom) / oldZoom,
     y: focal.y - ((focal.y - camera.y) * newZoom) / oldZoom,
+  };
+}
+
+/** Zoom bands keep window changes off the per-frame camera path. */
+export function cameraZoomBand(zoom: number) {
+  "worklet";
+  return Math.max(0.48, Math.floor((zoom + 1e-6) / 0.12) * 0.12);
+}
+
+/** Viewport plus overscan for a 10-step camera bucket and artwork extents. */
+export function cameraCanvas(centerStep: number, height: number, zoom = 0.48) {
+  const halfWindow = Math.ceil(height / (cameraZoomBand(zoom) * 108)) + 8;
+  return {
+    halfWindow,
+    x: -600,
+    y: positionForStep(centerStep).y - halfWindow * 54 - 320,
+    width: 1300,
+    height: halfWindow * 108 + 640,
   };
 }

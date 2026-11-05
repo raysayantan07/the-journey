@@ -1,23 +1,24 @@
 # Install The Journey on the Fold cover screen
 
-The React Native application is implemented in this repository. `App.tsx` opens `JourneyScreen` directly. The current task adds build/update infrastructure only; it does not add app features.
+The React Native application is implemented in this repository. `App.tsx` opens `JourneyScreen` directly. The preview includes cloud build/update infrastructure; camera responsiveness changes are being tested separately on the feature branch.
 
 ## Current status
 
 - Expo SDK 58 and its native dependencies validate against the installed SDK's compatibility manifest.
 - `eas.json` uses `distribution: "internal"`, `android.buildType: "apk"`, `channel: "preview"`, and `environment: "preview"`.
 - SDK-compatible `expo-updates` is installed. The intended runtime policy is `fingerprint`.
-- **No EAS project exists yet**, so there is no real project UUID or update URL in `app.json`. These must be generated under your Expo account; there are no invented placeholders.
-- `eas whoami` returned **Not logged in**. The preview build attempt exited before submission: **An Expo user account is required to proceed**.
-- A request to `https://api.expo.dev` received **HTTP 403 / CONNECT tunnel failed** from the environment's proxy.
-- **No build ID, signed APK, installation URL, or EAS Update publication exists from this task.** Local Hermes exports are not APKs.
+- Existing Expo project: `@raysayantan07s-team/the-journey`, ID `8356cd34-3b01-4c62-b64a-d1e879ed94a2`. Android package remains `com.thejourney.personal`.
+- Authentication succeeds through the environment's `EXPO_TOKEN`; never print or commit its value.
+- Android preview build succeeded using the existing remote keystore: [build dc97c00b](https://expo.dev/accounts/raysayantan07s-team/projects/the-journey/builds/dc97c00b-092a-4de5-8f53-4c1e0f21cbee).
+- Installed preview native runtime: `58c8ef5b9e8676eec1ab0efa5f28ec870ebfec3e`. Verify it again before each Android-only update to `preview`.
+- The exact upload hostname `update-assets-upload-production.storage.googleapis.com` is now allowed. The initial camera/windowing update was published as group `889fa37d-815d-4e25-9a8b-3e0fbe2eb071`. Device feedback reported worse dragging/pinching, so the next iteration isolates Android SVG bitmap redraws into small surfaces.
+- The number beside **The Journey** identifies the running bundle. Numbered releases begin at **1**. Always publish through `node scripts/update-preview.cjs`; it increments the bundled number and restores it if publishing fails. Commit `src/iteration.json` after successful publishing. The older npm publishing script bypasses this counter; its text remains intact because changing npm scripts changes the installed fingerprint.
 
 ## 1. Unblock cloud access and authenticate
 
 Use this cloud terminal; no Windows/Mac or local Android SDK is required.
 
-The environment configuration draft now requests `api.expo.dev`, `expo.dev`, `u.expo.dev`, and `assets.eascdn.net`, retaining the package-manager preset. It also declares an optional **personal `EXPO_TOKEN`** binding for the Expo API. Saving that draft did not change the running network policy. Review and save it in environment settings, enter a token securely if using that path, and publish the environment as requested by the product to activate the new configuration. The agent has not published the environment.
-
+The active environment has the required Expo authentication binding and the API/upload hosts above. Verify current environment readiness when resuming; old setup failures below are not the current status. Do not recreate this project or regenerate signing credentials.
 An Expo account is required. If you do not have one, create it at https://expo.dev. Either:
 
 - Add your personal Expo access token through the secure `EXPO_TOKEN` environment setting, never through chat or a repository file; or
@@ -33,30 +34,32 @@ npx eas whoami
 
 The EAS CLI is pinned in development dependencies. A successful registry install does not establish access to Expo APIs. Artifact uploads may use additional signed storage hosts returned by Expo; if a specific upload is denied, add that exact host through environment settings and retry. Do not bypass the proxy or disable TLS verification.
 
-## 2. Create and link the Expo project, then configure updates
+## 2. Verify the existing Expo project and update configuration
 
-Replace `YOUR_EXPO_USERNAME` below with your actual Expo account name. This creates/links an **Expo project**, not another GitHub repository.
+The source configuration is already linked. Verify it rather than creating a new project:
 
 ```sh
-npx eas init --account YOUR_EXPO_USERNAME --non-interactive
-npx eas update:configure --platform android --environment preview --non-interactive
+npx eas project:info
 npm run eas:ready
 ```
 
-`eas init` must write the real `expo.extra.eas.projectId` (and the account owner if needed). `eas update:configure` must set:
+Expected configuration:
 
 ```text
-expo.updates.url = https://u.expo.dev/<that same real project UUID>
+expo.extra.eas.projectId = 8356cd34-3b01-4c62-b64a-d1e879ed94a2
+expo.owner = raysayantan07s-team
+expo.android.package = com.thejourney.personal
+expo.updates.url = https://u.expo.dev/8356cd34-3b01-4c62-b64a-d1e879ed94a2
 expo.runtimeVersion.policy = fingerprint
 ```
 
-The `runtimeVersion` policy is already declared as `fingerprint`; retain it if the CLI proposes another default. The preflight rejects missing IDs, a mismatched URL, disabled updates, an incorrect preview profile, or local generated native directories. Commit the actual account/project configuration written by these commands. Project IDs and update URLs are public identifiers, not credentials.
+The preflight rejects missing IDs, a mismatched URL, disabled updates, an incorrect preview profile, or local generated native directories. Project IDs and update URLs are public identifiers, not credentials.
 
 This project uses Expo native generation. `android/` and `ios/` should remain absent from the checkout at EAS command time. Local Android generation was validated and its generated output preserved outside the checkout in `/tmp`. If you later run `expo prebuild` locally, preserve any deliberate manual native edits before removing generated directories; do not blindly delete native work.
 
 **Do not build a preview APK before linking/configuring updates.** Without the real update URL, native generation disables updates. A binary built that way cannot gain EAS Update support through an OTA update; it would require a new APK. `npm run android:preview` prevents that accidental build.
 
-## 3. Build the first signed APK
+## 3. Build a signed APK when the native runtime changes
 
 ```sh
 npm run check
@@ -69,7 +72,7 @@ The build script runs the local EAS preflight and then:
 npx eas build --platform android --profile preview
 ```
 
-For the first build, allow EAS to create/manage the Android signing keystore and create the `preview` channel if prompted. Keep using that project's signing credentials for future APK upgrades. The first credential setup can require interactive prompts; a CI token does not itself create an Android keystore. Once credentials/project/channel exist, unattended builds can use:
+The Android keystore and `preview` channel already exist. Reuse the remote signing credentials for future APK upgrades; do not generate another keystore. The first credential setup can require interactive prompts; a CI token does not itself create an Android keystore. Once credentials/project/channel exist, unattended builds can use:
 
 ```sh
 npm run android:preview -- --non-interactive
@@ -113,10 +116,10 @@ npm ci
 npm run check
 npm run eas:ready
 npx eas fingerprint:compare --build-id REAL_INSTALLED_BUILD_ID --environment preview
-npm run update:preview -- --message "Refine Journey tile lighting"
+EXPO_NO_TELEMETRY=1 node scripts/update-preview.cjs --message "Refine Journey tile lighting" --non-interactive
 ```
 
-The last command expands to:
+The last command validates configuration, increments the bundled iteration, and invokes:
 
 ```sh
 npx eas update --channel preview --platform android --environment preview --message "Refine Journey tile lighting"
